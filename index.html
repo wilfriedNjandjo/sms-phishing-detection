@@ -1,0 +1,620 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<title>Unité d'analyse SMS — Détection de phishing</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+
+  :root{
+    --bg:#0A0E14;
+    --panel:#10151D;
+    --panel-line:#1E2630;
+    --paper:#E8E2D4;
+    --paper-line:#cfc6ae;
+    --text:#C9D1D9;
+    --text-dim:#6B7785;
+    --scam:#FF3B5C;
+    --scam-dim:#5c2230;
+    --legit:#2DD4A7;
+    --legit-dim:#163d33;
+    --amber:#E8B23A;
+  }
+
+  *{ box-sizing:border-box; }
+
+  body{
+    margin:0;
+    min-height:100vh;
+    background:
+      radial-gradient(circle at 15% 0%, #131A24 0%, var(--bg) 55%);
+    color:var(--text);
+    font-family:'Inter', sans-serif;
+    padding:40px 20px 80px;
+  }
+
+  /* ====== EN-TÊTE ====== */
+  .topbar{
+    max-width:1040px;
+    margin:0 auto 36px;
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-end;
+    border-bottom:1px solid var(--panel-line);
+    padding-bottom:18px;
+  }
+
+  .eyebrow{
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    letter-spacing:0.18em;
+    color:var(--legit);
+    text-transform:uppercase;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:10px;
+  }
+  .eyebrow .dot{
+    width:6px; height:6px; border-radius:50%;
+    background:var(--legit);
+    box-shadow:0 0 8px var(--legit);
+    animation:pulse 2s infinite;
+  }
+  @keyframes pulse{ 0%,100%{opacity:1} 50%{opacity:.3} }
+
+  .topbar h1{
+    font-family:'Space Mono', monospace;
+    font-size:26px;
+    font-weight:700;
+    margin:0;
+    color:#F2F4F7;
+    letter-spacing:-0.01em;
+  }
+
+  .case-id{
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    text-align:right;
+    line-height:1.6;
+  }
+
+  /* ====== GRILLE PRINCIPALE ====== */
+  .grille{
+    max-width:1040px;
+    margin:0 auto;
+    display:grid;
+    grid-template-columns:1fr 1fr;
+    gap:28px;
+    align-items:start;
+  }
+  @media (max-width:860px){
+    .grille{ grid-template-columns:1fr; }
+  }
+
+  /* ====== COLONNE GAUCHE : LE "TÉLÉPHONE" ====== */
+  .telephone{
+    background:#05070A;
+    border:1px solid var(--panel-line);
+    border-radius:28px;
+    padding:14px 14px 22px;
+    position:relative;
+  }
+  .telephone::before{
+    content:"";
+    position:absolute;
+    top:14px; left:50%; transform:translateX(-50%);
+    width:70px; height:5px; border-radius:4px;
+    background:#1c232d;
+  }
+  .ecran{
+    background:linear-gradient(180deg,#0d1117,#0a0d12);
+    border-radius:18px;
+    padding:34px 16px 16px;
+    min-height:420px;
+    display:flex;
+    flex-direction:column;
+  }
+  .contact-bar{
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    text-align:center;
+    margin-bottom:18px;
+    letter-spacing:0.05em;
+  }
+  .contact-bar b{ color:var(--text); }
+
+  .bulle-sms{
+    align-self:flex-start;
+    max-width:88%;
+    background:var(--paper);
+    color:#1a1a1a;
+    border-radius:4px 16px 16px 16px;
+    padding:14px 16px;
+    font-size:14.5px;
+    line-height:1.55;
+    position:relative;
+    box-shadow:0 6px 18px rgba(0,0,0,0.35);
+  }
+  .bulle-sms[contenteditable="true"]{ outline:none; cursor:text; }
+  .bulle-sms[contenteditable="true"]:focus{
+    box-shadow:0 6px 18px rgba(0,0,0,0.35), 0 0 0 2px var(--amber);
+  }
+
+  /* surlignage des indices détectés, posé APRÈS le scan */
+  .indice{
+    background:rgba(255,59,92,0.18);
+    border-bottom:2px solid var(--scam);
+    border-radius:2px;
+    padding:0 1px;
+  }
+
+  /* ligne de scan qui balaie la bulle */
+  .scan-overlay{
+    position:absolute; inset:0;
+    border-radius:4px 16px 16px 16px;
+    overflow:hidden;
+    pointer-events:none;
+    opacity:0;
+  }
+  .scan-overlay.actif{ opacity:1; }
+  .scan-ligne{
+    position:absolute; left:0; right:0; height:36%;
+    background:linear-gradient(180deg, rgba(45,212,167,0) 0%, rgba(45,212,167,0.35) 50%, rgba(45,212,167,0) 100%);
+    animation:balayage 1.1s ease-in-out infinite;
+  }
+  @keyframes balayage{
+    0%{ top:-40%; }
+    100%{ top:100%; }
+  }
+
+  .bulle-wrap{ position:relative; }
+
+  .horodatage{
+    font-family:'Space Mono', monospace;
+    font-size:10px;
+    color:var(--text-dim);
+    margin-top:8px;
+    align-self:flex-start;
+  }
+
+  .commandes{
+    margin-top:auto;
+    padding-top:18px;
+    display:flex;
+    gap:8px;
+  }
+  .bouton-analyser{
+    flex:1;
+    background:var(--legit);
+    color:#06140f;
+    border:none;
+    border-radius:10px;
+    padding:13px;
+    font-family:'Space Mono', monospace;
+    font-size:13px;
+    font-weight:700;
+    letter-spacing:0.04em;
+    text-transform:uppercase;
+    cursor:pointer;
+    transition:transform .15s, box-shadow .15s;
+  }
+  .bouton-analyser:hover{ transform:translateY(-1px); box-shadow:0 6px 16px rgba(45,212,167,0.25); }
+  .bouton-analyser:disabled{ background:#2a3138; color:var(--text-dim); cursor:wait; transform:none; box-shadow:none; }
+
+  .bouton-exemple{
+    background:transparent;
+    border:1px solid var(--panel-line);
+    color:var(--text-dim);
+    border-radius:10px;
+    padding:13px 14px;
+    font-family:'Space Mono', monospace;
+    font-size:12px;
+    cursor:pointer;
+  }
+  .bouton-exemple:hover{ border-color:var(--text-dim); color:var(--text); }
+
+  /* ====== COLONNE DROITE : PANNEAU D'ANALYSE ====== */
+  .panneau{
+    background:var(--panel);
+    border:1px solid var(--panel-line);
+    border-radius:18px;
+    padding:26px;
+    min-height:420px;
+    display:flex;
+    flex-direction:column;
+  }
+  .panneau h2{
+    font-family:'Space Mono', monospace;
+    font-size:13px;
+    text-transform:uppercase;
+    letter-spacing:0.1em;
+    color:var(--text-dim);
+    margin:0 0 22px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .panneau h2::after{
+    content:"";
+    flex:1;
+    height:1px;
+    background:var(--panel-line);
+  }
+
+  /* --- jauge / aiguille de verdict --- */
+  .jauge-zone{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    margin-bottom:8px;
+  }
+  .jauge{
+    width:240px;
+    height:130px;
+    position:relative;
+  }
+  .jauge svg{ width:100%; height:100%; }
+
+  .aiguille{
+    transform-origin:120px 120px;
+    transform:rotate(-90deg);
+    transition:transform 1.1s cubic-bezier(.34,1.56,.64,1);
+  }
+
+  .verdict-texte{
+    font-family:'Space Mono', monospace;
+    font-weight:700;
+    font-size:22px;
+    letter-spacing:0.04em;
+    margin-top:6px;
+    min-height:30px;
+    transition:color .3s;
+  }
+  .verdict-soustexte{
+    font-size:12.5px;
+    color:var(--text-dim);
+    text-align:center;
+    max-width:280px;
+    min-height:18px;
+  }
+
+  /* --- liste des indices détectés --- */
+  .indices-bloc{
+    margin-top:24px;
+    border-top:1px solid var(--panel-line);
+    padding-top:18px;
+    flex:1;
+  }
+  .indices-titre{
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    margin-bottom:12px;
+  }
+  .liste-indices{
+    list-style:none;
+    margin:0; padding:0;
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+  .liste-indices li{
+    font-size:13px;
+    display:flex;
+    align-items:baseline;
+    gap:8px;
+    color:var(--text);
+  }
+  .liste-indices li .puce{
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    color:var(--scam);
+    flex-shrink:0;
+  }
+  .vide-indices{
+    font-size:13px;
+    color:var(--text-dim);
+    font-style:italic;
+  }
+
+  .score-ligne{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    font-family:'Space Mono', monospace;
+    font-size:11px;
+    color:var(--text-dim);
+    margin-top:18px;
+    padding-top:16px;
+    border-top:1px solid var(--panel-line);
+  }
+  .score-valeur{ color:var(--text); font-weight:700; }
+
+  .etat-repos{
+    flex:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    flex-direction:column;
+    color:var(--text-dim);
+    text-align:center;
+    gap:10px;
+  }
+  .etat-repos svg{ opacity:.35; }
+  .etat-repos p{ font-size:13px; max-width:220px; margin:0; }
+
+  .erreur-api{
+    font-size:12.5px;
+    color:var(--amber);
+    background:rgba(232,178,58,0.08);
+    border:1px solid rgba(232,178,58,0.25);
+    border-radius:8px;
+    padding:10px 12px;
+    margin-top:14px;
+    line-height:1.5;
+  }
+
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <div class="eyebrow"><span class="dot"></span>Unité d'analyse active</div>
+    <h1>Scanner de SMS frauduleux</h1>
+  </div>
+  <div class="case-id">
+    MODÈLE&nbsp;: SVM&nbsp;+&nbsp;TF-IDF<br>
+    STATUT&nbsp;: <span id="statut-api" style="color:var(--text-dim)">vérification…</span>
+  </div>
+</div>
+
+<div class="grille">
+
+  <!-- ===================== COLONNE GAUCHE : TELEPHONE ===================== -->
+  <div class="telephone">
+    <div class="ecran">
+      <div class="contact-bar">Expéditeur&nbsp;: <b>+237 6XX XXX XXX</b></div>
+
+      <div class="bulle-wrap">
+        <div class="bulle-sms" id="texte_sms" contenteditable="true">WIN a FREE iPhone now! Click here to claim your prize, urgent reply needed!!!</div>
+        <div class="scan-overlay" id="scan_overlay"><div class="scan-ligne"></div></div>
+      </div>
+      <div class="horodatage" id="horodatage"></div>
+
+      <div class="commandes">
+        <button class="bouton-analyser" id="bouton_analyser">Lancer l'analyse</button>
+        <button class="bouton-exemple" id="bouton_exemple" title="Charger un autre exemple">⟳ exemple</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== COLONNE DROITE : PANNEAU D'ANALYSE ===================== -->
+  <div class="panneau">
+    <h2>Rapport d'expertise</h2>
+
+    <div id="contenu_repos" class="etat-repos">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+        <circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.6" y2="16.6"/>
+      </svg>
+      <p>Modifiez le message à gauche puis lancez l'analyse pour obtenir le verdict du modèle.</p>
+    </div>
+
+    <div id="contenu_resultat" style="display:none; flex:1; flex-direction:column;">
+      <div class="jauge-zone">
+        <div class="jauge">
+          <svg viewBox="0 0 240 130">
+            <!-- arc de fond, dégradé légitime -> arnaque -->
+            <path d="M 20 120 A 100 100 0 0 1 220 120" fill="none" stroke="#1E2630" stroke-width="14" stroke-linecap="round"/>
+            <path d="M 20 120 A 100 100 0 0 1 120 20" fill="none" stroke="var(--legit)" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+            <path d="M 120 20 A 100 100 0 0 1 220 120" fill="none" stroke="var(--scam)" stroke-width="14" stroke-linecap="round" opacity="0.55"/>
+            <!-- aiguille -->
+            <g class="aiguille" id="aiguille">
+              <line x1="120" y1="120" x2="120" y2="34" stroke="#F2F4F7" stroke-width="3" stroke-linecap="round"/>
+              <circle cx="120" cy="120" r="6" fill="#F2F4F7"/>
+            </g>
+          </svg>
+        </div>
+        <div class="verdict-texte" id="verdict_texte"></div>
+        <div class="verdict-soustexte" id="verdict_soustexte"></div>
+      </div>
+
+      <div class="indices-bloc">
+        <div class="indices-titre">Indices repérés dans le message</div>
+        <ul class="liste-indices" id="liste_indices"></ul>
+      </div>
+
+      <div class="score-ligne">
+        <span>Score de décision du modèle</span>
+        <span class="score-valeur" id="score_valeur">—</span>
+      </div>
+    </div>
+
+    <div id="erreur_zone"></div>
+  </div>
+
+</div>
+
+<script>
+  // ============================================================
+  // CONFIGURATION
+  // ============================================================
+  const URL_API = "https://sms-phishing-detection-80xt.onrender.com/predict";
+
+  // mots-clés utilisés UNIQUEMENT pour la mise en évidence visuelle côté
+  // client (les mêmes familles de signaux que ceux vus en feature engineering)
+  const MOTS_SUSPECTS = [
+    "free","win","winner","cash","prize","urgent","claim","txt","click",
+    "congratulations","offer","credit","loan","reward","gratuit","gagne",
+    "gagnez","cadeau","felicitations","urgent","immediatement","cliquez",
+    "reclamer","bloque","suspendu"
+  ];
+
+  const exemples = [
+    "WIN a FREE iPhone now! Click here to claim your prize, urgent reply needed!!!",
+    "Hey, are we still meeting at 6pm for dinner tonight?",
+    "Felicitations, vous etes le gagnant du jour, appelez immediatement",
+    "Le rendez-vous est confirme pour demain a 10h, merci",
+    "URGENT: your account will be suspended. Call 08001234567 now to confirm"
+  ];
+  let indexExemple = 0;
+
+  const champTexte = document.getElementById("texte_sms");
+  const bouton = document.getElementById("bouton_analyser");
+  const boutonExemple = document.getElementById("bouton_exemple");
+  const scanOverlay = document.getElementById("scan_overlay");
+  const contenuRepos = document.getElementById("contenu_repos");
+  const contenuResultat = document.getElementById("contenu_resultat");
+  const aiguille = document.getElementById("aiguille");
+  const verdictTexte = document.getElementById("verdict_texte");
+  const verdictSoustexte = document.getElementById("verdict_soustexte");
+  const listeIndices = document.getElementById("liste_indices");
+  const scoreValeur = document.getElementById("score_valeur");
+  const erreurZone = document.getElementById("erreur_zone");
+  const statutApi = document.getElementById("statut-api");
+  const horodatage = document.getElementById("horodatage");
+
+  // Affiche une horodatage type "SMS reçu à 14:32" pour le réalisme du téléphone
+  function rafraichirHorodatage(){
+    const maintenant = new Date();
+    const h = String(maintenant.getHours()).padStart(2,"0");
+    const m = String(maintenant.getMinutes()).padStart(2,"0");
+    horodatage.textContent = `Reçu à ${h}:${m}`;
+  }
+  rafraichirHorodatage();
+
+  // Vérifie au chargement si l'API est joignable, juste pour informer l'utilisateur
+  async function verifierApi(){
+    try{
+      const r = await fetch("https://sms-phishing-detection-80xt.onrender.com/health");
+      if(r.ok){
+        statutApi.textContent = "API connectée";
+        statutApi.style.color = "var(--legit)";
+      } else {
+        throw new Error();
+      }
+    }catch(e){
+      statutApi.textContent = "API hors-ligne";
+      statutApi.style.color = "var(--scam)";
+    }
+  }
+  verifierApi();
+
+  boutonExemple.addEventListener("click", () => {
+    indexExemple = (indexExemple + 1) % exemples.length;
+    champTexte.textContent = exemples[indexExemple];
+    rafraichirHorodatage();
+    // on remet l'interface en état "repos" quand on change de message
+    contenuResultat.style.display = "none";
+    contenuRepos.style.display = "flex";
+    erreurZone.innerHTML = "";
+  });
+
+  function surlignerIndices(texte){
+    // construit une version HTML du texte avec les mots suspects encadrés
+    // d'un <mark class="indice">, pour visualiser ce qui "ressemble" à du phishing
+    let html = texte;
+    const trouves = [];
+    MOTS_SUSPECTS.forEach(mot => {
+      const regex = new RegExp(`(\\b${mot}\\b)`, "gi");
+      if(regex.test(html)){
+        trouves.push(mot);
+        html = html.replace(regex, '<span class="indice">$1</span>');
+      }
+    });
+    return { html, trouves };
+  }
+
+  async function analyser(){
+    const texteBrut = champTexte.innerText.trim();
+    if(texteBrut === ""){
+      champTexte.focus();
+      return;
+    }
+
+    bouton.disabled = true;
+    bouton.textContent = "Analyse en cours…";
+    erreurZone.innerHTML = "";
+    scanOverlay.classList.add("actif");
+
+    // on laisse l'animation de scan tourner un minimum de temps,
+    // pour que l'effet "scanner" soit perceptible même si l'API répond très vite
+    const debut = Date.now();
+
+    try{
+      const reponse = await fetch(URL_API, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sms: texteBrut })
+      });
+      const donnees = await reponse.json();
+
+      const tempsEcoule = Date.now() - debut;
+      const attenteMin = 900; // durée minimale de l'animation, en millisecondes
+      if(tempsEcoule < attenteMin){
+        await new Promise(r => setTimeout(r, attenteMin - tempsEcoule));
+      }
+
+      scanOverlay.classList.remove("actif");
+
+      if(!reponse.ok){
+        throw new Error(donnees.erreur || "Erreur inconnue renvoyée par l'API");
+      }
+
+      const estArnaque = donnees.label === "Arnaque";
+
+      // mise à jour visuelle du texte avec les indices surlignés
+      const { html, trouves } = surlignerIndices(texteBrut);
+      champTexte.innerHTML = html;
+
+      // rotation de l'aiguille : -90deg = tout à gauche (légitime), +90deg = tout à droite (arnaque)
+      const angle = estArnaque ? 80 : -80;
+      aiguille.style.transform = `rotate(${angle}deg)`;
+
+      verdictTexte.textContent = estArnaque ? "⚠ ARNAQUE DÉTECTÉE" : "✓ MESSAGE LÉGITIME";
+      verdictTexte.style.color = estArnaque ? "var(--scam)" : "var(--legit)";
+      verdictSoustexte.textContent = estArnaque
+        ? "Ce message présente les caractéristiques typiques d'une tentative de phishing."
+        : "Aucun signal de fraude significatif détecté dans ce message.";
+
+      listeIndices.innerHTML = "";
+      if(trouves.length === 0){
+        listeIndices.innerHTML = `<li class="vide-indices">Aucun mot-clé suspect identifié dans le texte.</li>`;
+      } else {
+        trouves.forEach(mot => {
+          const li = document.createElement("li");
+          li.innerHTML = `<span class="puce">»</span> terme « ${mot} » repéré`;
+          listeIndices.appendChild(li);
+        });
+      }
+
+      scoreValeur.textContent = donnees.score_decision !== undefined
+        ? donnees.score_decision
+        : "n/a";
+
+      contenuRepos.style.display = "none";
+      contenuResultat.style.display = "flex";
+
+    }catch(err){
+      scanOverlay.classList.remove("actif");
+      erreurZone.innerHTML = `<div class="erreur-api">
+        Impossible de contacter l'API d'analyse. Vérifiez qu'elle est bien lancée
+        (<code>python api.py</code> ou la cellule Jupyter correspondante) sur le port 5000.
+      </div>`;
+    }finally{
+      bouton.disabled = false;
+      bouton.textContent = "Lancer l'analyse";
+    }
+  }
+
+  bouton.addEventListener("click", analyser);
+</script>
+
+</body>
+</html>
